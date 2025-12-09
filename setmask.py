@@ -1,6 +1,5 @@
 from itertools import combinations
 
-
 def build_masks(points):
     """
     points              := list of N points represented by tuples (x, y)
@@ -44,9 +43,9 @@ def is_valid(subset_mask, M, aligned):
     Whether the subset encoded in subset_mask is Manhattan Connected.
 
     subset_mask := subset of [N] --> corresponds to the encoding of a subset in points
-    M, align precomputed by build_mask(points)
+    M, aligned : precomputed by build_mask(points)
 
-    i, j in subset_mask are connected if either the correspondin points are aligned,
+    i, j in subset_mask are connected if either the corresponding points are aligned,
     or subset contains contains a point that makes (i, j), i.e. subset_mask contains k in M[i, j]
     """
     for (i, j) in combinations(subset_mask, 2):
@@ -64,8 +63,6 @@ def find_solutions(input, candidates, only_one=True):
     if is_manhattan_connected(input):
         return True, list()
     
-    input = list(input)
-    candidates = list(candidates)
     all_points = input + candidates
 
     n = len(input)
@@ -80,7 +77,7 @@ def find_solutions(input, candidates, only_one=True):
 
     # Iterate over every subset of size k of candidate points
     list_solutions = list()
-    for size in range(0, m+1):
+    for size in range(1, m+1):
         found_solution = False
         for subset in combinations(CANDIDATE_MASK, size): 
             SUBSET_MASK = INPUT_MASK | set(subset)

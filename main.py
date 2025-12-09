@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from setmask import find_solutions
+# from bitmask import find_solutions
 
 # Configurable grid size
 GRID_ROWS = 15
@@ -54,14 +55,18 @@ EMOJI_MAP = {
 }
 
 def input_points(grid):
-    return set([(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 1])
+    return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 1]
 
 def candidate_points(grid):
-    return set([(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 2])
+    return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 2]
 
 # Karol's n^3 solution
 def is_manhattan_connected(points):
-    points = list(points)
+    """
+    Karol's vibecode solution (we use it only once for the first check on input points)
+
+    Complexity: O(n^3)
+    """
     if len(points) <= 1:
         return True
 
