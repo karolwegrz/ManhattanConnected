@@ -25,9 +25,9 @@ def build_bitmasks(points):
                 continue
 
             for k in range(N):
-                cx, cy = points[k][0], points[k][1]         # Point c (different from a and b)
                 if k == i or k == j:
                     continue
+                cx, cy = points[k][0], points[k][1]         # Point c (different from a and b)
 
                 xmin, xmax = min(ax, bx), max(ax, bx)
                 ymin, ymax = min(ay, by), max(ay, by)
@@ -55,25 +55,28 @@ def is_valid(subset_mask, N, valid_mask, aligned_mask):
 
     Complexity: O(N^2)
     """
+    # if subset_mask == 7:
+        # print("subset_mask", subset_mask)
     for i in range(N):
         if not (subset_mask & (1 << i)):
             continue            
         for j in range(i + 1, N):
             if not (subset_mask & (1 << j)):
                 continue
+            # print(i, j)
             
             if not is_pair_valid(i, j, subset_mask, valid_mask, aligned_mask):
+                # print("unresolved", i, j)
                 return False
+    # print("valid")
     return True
 
-def find_solutions(input_points, candidate_points, only_one=True):
+def find_solutions_mask(all_points, n, max_nb_sol=10):
     """
     Finds the minimum size subset of candidates that validates all pairs in (input U subset).
     """
-    all_points = input_points + candidate_points
-    n = len(input_points)
-    m = len(candidate_points)
     N = len(all_points)
+    m = N - n
 
     if N > 63:
         raise ValueError("N must be <= 63 for the 64-bit integer bitmask trick.")
@@ -81,6 +84,8 @@ def find_solutions(input_points, candidate_points, only_one=True):
     # PRECOMPUTATION: O(N^3)
     valid_mask, aligned_mask = build_bitmasks(all_points)
 
+    # print("valid", valid_mask)
+    # print("aligned", aligned_mask)
     # First n bits indicate the input points, bits n+1, ..., N are the candidate points
     INPUT_MASK = (1 << n) - 1 
     CANDIDATE_INDICES = range(n, N)
@@ -90,26 +95,40 @@ def find_solutions(input_points, candidate_points, only_one=True):
     #     return True, []
 
     # Enumerate subsets of candidate in increasing size until found connected subset
-    list_solutions = []
+    solutions_mask = []
+    count_nb_sol = 0
+
+    # print(all_points)
+    # print(INPUT_MASK)
+    # print(CANDIDATE_INDICES)
     for size in range(m + 1):
         found_solution = False
-        
         for subset_indices in combinations(CANDIDATE_INDICES, size):
-            
             # Build the bitmask of the current set of points: O(size)
-            SUBSET_MASK = INPUT_MASK
+            SUBSET_MASK = 0
             for i in subset_indices:
                 SUBSET_MASK |= (1 << i)
+            POINTS_MASK = INPUT_MASK | SUBSET_MASK
+
+            # print(subset_indices)
+            # print(POINTS_MASK)
             
-            if is_valid(SUBSET_MASK, N, valid_mask, aligned_mask):
+            # if POINTS_MASK == 7:
+                # print("Subset indices", subset_indices)
+            if is_valid(POINTS_MASK, N, valid_mask, aligned_mask):
+                # print("valid found")
+                solutions_mask.append(SUBSET_MASK)
                 found_solution = True        
-                subset_points = [all_points[i] for i in subset_indices]
-                list_solutions.append(subset_points)
-                if only_one:
-                    return True, list_solutions
+                count_nb_sol += 1
+                if max_nb_sol == count_nb_sol:
+                    print("aborted early")
+                    return True, solutions_mask
+            # if found_solution:
+            #     print("same size tested", subset_indices)
         
         if found_solution:
-            return True, list_solutions
+            # print("found", solutions_mask)
+            return True, solutions_mask
             
     return False, []
     

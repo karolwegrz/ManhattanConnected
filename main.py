@@ -1,7 +1,14 @@
 import streamlit as st
 import time
-from setmask import find_solutions
-# from bitmask import find_solutions
+# from setmask import find_solutions
+# from bitmask import find_solutions_mask
+from bitmask_cy import find_solutions_mask
+
+def find_solutions(all_points, n, max_nb_sol):
+    found, mask_list = find_solutions_mask(all_points, n, max_nb_sol)
+    solutions = convert_masks_to_points(mask_list, all_points)
+    return found, solutions
+
 
 # Configurable grid size
 GRID_ROWS = 15
@@ -111,12 +118,29 @@ def display_solutions(input, candidate, solutions):
                     symbol = EMOJI_MAP[0]
                 cols[j].button(symbol, key=f"{i}-{j}_{x}", args=(i, j, x))
 
+
+def convert_masks_to_points(mask_list, all_points):
+    sol_list = []
+    for mask in mask_list:
+        # print(mask)
+        if mask:
+            subset = []
+            for i in range(N):
+                if (mask & (1 << i)):
+                    subset.append(all_points[i])
+            # print(subset)
+            sol_list.append(subset)
+    return sol_list
+
+
 def cycle_cell(i, j):
     st.session_state.grid[i][j] = (st.session_state.grid[i][j] + 1) % 3
     
     st.session_state.input = input_points(st.session_state.grid)
     st.session_state.candidates = candidate_points(st.session_state.grid)
-   
+
+    st.info(f"Input size: {len(st.session_state.input)}, Total size: {len(st.session_state.input) + len(st.session_state.candidates)}")
+
 #######################################
 
 # Layout grid with minimal gaps
@@ -128,24 +152,29 @@ for i in range(GRID_ROWS):
 
 # Status message at the bottom of the grid
 if st.button("Submit", type="primary"):
+
     t1 =  time.time()
     st.session_state.connected = is_manhattan_connected(st.session_state.input)
     t2 = time.time()
 
     if st.session_state.connected:
-        st.success(f"Connected")
+        st.success(f"Connected (in {t2-t1} sec)")
     else:
-        st.error(f"Not Connected")
+        st.error(f"Not Connected (in {t2-t1} sec)")
+
+        all_points = st.session_state.input + st.session_state.candidates
+        N = len(all_points)
+        n = len(st.session_state.input)
 
         t3 = time.time()
-        st.session_state.solvable, st.session_state.solutions = find_solutions(st.session_state.input, st.session_state.candidates, only_one=False)
+        found, solutions = find_solutions(all_points, n, max_nb_sol=10)        
         t4 = time.time()
 
-        nb_sol = len(st.session_state.solutions)
-        if st.session_state.solvable and nb_sol > 0:
-            sol_size = len(st.session_state.solutions[0])
+        nb_sol = len(solutions)
+        if found and nb_sol > 0:
+            sol_size = len(solutions[0])
             st.info(f'Found {nb_sol} solutions of size {sol_size} (in {t4-t3} sec)', icon="ℹ️")
-            display_solutions(st.session_state.input, st.session_state.candidates, st.session_state.solutions)
+            display_solutions(st.session_state.input, st.session_state.candidates, solutions)
         else:
             st.info(f'No solution found (in {t2-t1} sec)', icon="ℹ️")
 

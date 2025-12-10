@@ -38,7 +38,7 @@ def build_masks(points):
 
     return valid_mask, aligned_mask
 
-def is_valid(subset_mask, M, aligned):
+def is_valid(subset_mask, N, valid_mask, aligned_mask):
     """
     Whether the subset encoded in subset_mask is Manhattan Connected.
 
@@ -49,7 +49,7 @@ def is_valid(subset_mask, M, aligned):
     or subset contains contains a point that makes (i, j), i.e. subset_mask contains k in M[i, j]
     """
     for (i, j) in combinations(subset_mask, 2):
-        if not ((i in aligned[j]) or (subset_mask & M[i][j])):
+        if not ((i in aligned_mask[j]) or (subset_mask & valid_mask[i][j])):
             return False
     return True
     
@@ -57,17 +57,14 @@ def is_manhattan_connected(points):
     points = list(points)
     POINTS_MASK = set(range(len(points)))
     M, aligned = build_masks(points)
-    return is_valid(POINTS_MASK, M, aligned)
+    return is_valid(POINTS_MASK, 0, M, aligned)
 
-def find_solutions(input, candidates, only_one=True):
-    if is_manhattan_connected(input):
+def find_solutions(all_points, n, max_nb_sol):
+    if is_manhattan_connected(all_points[:n]):
         return True, list()
     
-    all_points = input + candidates
-
-    n = len(input)
-    m = len(candidates)
-    N = n + m
+    N = len(all_points)
+    m = N - n
 
     INPUT_MASK = set(range(n))
     CANDIDATE_MASK = range(n, N)
@@ -81,7 +78,7 @@ def find_solutions(input, candidates, only_one=True):
         found_solution = False
         for subset in combinations(CANDIDATE_MASK, size): 
             SUBSET_MASK = INPUT_MASK | set(subset)
-            if is_valid(SUBSET_MASK, M, aligned):
+            if is_valid(SUBSET_MASK, N, M, aligned):
                 found_solution = True
                 subset_points = [all_points[i] for i in subset]
                 list_solutions.append(subset_points)
