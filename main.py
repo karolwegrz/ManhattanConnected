@@ -2,17 +2,17 @@ import streamlit as st
 import time
 # from setmask import find_solutions
 # from bitmask import find_solutions_mask
-from bitmask_cy import find_solutions_mask
-
-def find_solutions(all_points, n, max_nb_sol):
-    found, mask_list = find_solutions_mask(all_points, n, max_nb_sol)
-    solutions = convert_masks_to_points(mask_list, all_points)
-    return found, solutions
-
+from bitmask_cy import find_solutions, find_solutions_reverse
 
 # Configurable grid size
-GRID_ROWS = 15
-GRID_COLS = 10
+GRID_ROWS = 20
+GRID_COLS = 20
+MAX_NB_SOLS = 3
+MIN_SIZE = 16
+MAX_SIZE = 18
+DISPLAY = True
+INCREASING = False
+DECREASING = True
 
 # Tighten spacing, style buttons, and remove max-width/padding
 st.markdown(
@@ -56,7 +56,7 @@ if "solutions" not in st.session_state:
 # Button appearance mapping using emoji squares
 EMOJI_MAP = {
     0: "⬜",
-    1: "⬛",
+    1: "🟩",
     2: "🟥",
     3: "🟦"
 }
@@ -118,29 +118,12 @@ def display_solutions(input, candidate, solutions):
                     symbol = EMOJI_MAP[0]
                 cols[j].button(symbol, key=f"{i}-{j}_{x}", args=(i, j, x))
 
-
-def convert_masks_to_points(mask_list, all_points):
-    sol_list = []
-    for mask in mask_list:
-        # print(mask)
-        if mask:
-            subset = []
-            for i in range(N):
-                if (mask & (1 << i)):
-                    subset.append(all_points[i])
-            # print(subset)
-            sol_list.append(subset)
-    return sol_list
-
-
 def cycle_cell(i, j):
     st.session_state.grid[i][j] = (st.session_state.grid[i][j] + 1) % 3
     
     st.session_state.input = input_points(st.session_state.grid)
     st.session_state.candidates = candidate_points(st.session_state.grid)
-
-    st.info(f"Input size: {len(st.session_state.input)}, Total size: {len(st.session_state.input) + len(st.session_state.candidates)}")
-
+    
 #######################################
 
 # Layout grid with minimal gaps
@@ -152,6 +135,9 @@ for i in range(GRID_ROWS):
 
 # Status message at the bottom of the grid
 if st.button("Submit", type="primary"):
+    print(f"\nInput size: {len(st.session_state.input)}, \nTotal size: {len(st.session_state.input) + len(st.session_state.candidates)}")
+    print(st.session_state.input)
+    print(st.session_state.candidates)
 
     t1 =  time.time()
     st.session_state.connected = is_manhattan_connected(st.session_state.input)
@@ -166,15 +152,39 @@ if st.button("Submit", type="primary"):
         N = len(all_points)
         n = len(st.session_state.input)
 
-        t3 = time.time()
-        found, solutions = find_solutions(all_points, n, max_nb_sol=10)        
-        t4 = time.time()
 
-        nb_sol = len(solutions)
-        if found and nb_sol > 0:
-            sol_size = len(solutions[0])
-            st.info(f'Found {nb_sol} solutions of size {sol_size} (in {t4-t3} sec)', icon="ℹ️")
-            display_solutions(st.session_state.input, st.session_state.candidates, solutions)
-        else:
-            st.info(f'No solution found (in {t2-t1} sec)', icon="ℹ️")
+        if INCREASING:
+            t3 = time.time()
+            print("INCREASING SEARCH")
+            found, solutions = find_solutions(all_points, n, max_nb_sol=MAX_NB_SOLS, min_size=MIN_SIZE, max_size=MAX_SIZE)        
+            t4 = time.time()
+            nb_sol = len(solutions)
 
+            if found and nb_sol > 0:
+                sol_size = len(solutions[0])
+                st.info(f'Found {nb_sol}/{MAX_NB_SOLS} solutions of size {sol_size} (in {t4-t3} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👆")
+                
+                if DISPLAY:
+                    display_solutions(st.session_state.input, st.session_state.candidates, solutions)
+            else:
+                st.info(f'No solution found (in {t4-t3} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👆")
+    
+
+        if DECREASING:
+            t4b = time.time()
+            print("DECREASING SEARCH")
+            found_rev, solutions_rev = find_solutions_reverse(all_points, n, max_nb_sol=MAX_NB_SOLS, min_size=MIN_SIZE, max_size=MAX_SIZE)        
+            t5 = time.time()
+            nb_sol_rev = len(solutions_rev)
+
+
+            if found_rev and nb_sol_rev > 0:
+                sol_size_rev = len(solutions_rev[0])
+                st.info(f'Found {nb_sol_rev}/{MAX_NB_SOLS} solutions of size {sol_size_rev} (in {t5-t4b} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
+                
+                if DISPLAY:
+                    display_solutions(st.session_state.input, st.session_state.candidates, solutions)
+            else:
+                st.info(f'No solution found (in {t4-t3} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
+                
+        print("DONE")
