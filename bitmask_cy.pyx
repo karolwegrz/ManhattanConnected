@@ -2,14 +2,43 @@ from libc.stdint cimport uint64_t
 from itertools import combinations
 import numpy as np
 from libc.stdio cimport printf
+from time import time
 
+# Number of trailing zeroes
+cdef extern from "builtins.h":
+    int __builtin_ctzll(unsigned long long x)
 
-def convert_mask_to_points(mask, all_points):
+#####################
+# ENCODING SETS OF POINTS:
+# We fix the given input and candidate points and identify them with their index in that list. We call N the total number of points, and the first n points are input points.
+# Then a subset of points can be identified with a {0, 1}^N vector. Actually, we identify it to the integer that has it's i-th bit = 1 iff the i-th point is present in the set.
+# By handling sets of points as integers (called mask), we can check for intersection in constant time --> constant that is highly optimized in C as it's only bit operations.
+# 
+# SEARCH ALGORITHM:
+# Precomputation: 
+#   - compute for every point i in [N] the set of points j in [N] on the same row or column as i --> store the set as a mask in aligned_mask[i]
+#   - compute for every pair of points i, j in [N] the set of points k in [N] that lie in the rectangle span by i and j --> store the set as a mask in valid_mask[i, j]
+# Search:
+# For every subset of candidate points in increasing order of size, test if it renders (subset U input) connected. 
+# The union is a bit operation. 
+# The connectivity testing is simply checking for every pair of points (i, j) in (subset U input) whether they are aligned, or (subset U input) contains a point in valid_mask[i, j]. 
+# So we spend O(|subset U input|) time to check connectivity, where the constant is supposedly highly optimized. 
+#####################
+
+def mask_to_point(mask, all_points):
     subset = []
     for i in range(len(all_points)):
         if (mask & (<uint64_t>1 << i)):
             subset.append(all_points[i])
     return subset
+
+def masks_to_points(mask_list, all_points):
+    sol_list = []
+    for mask in mask_list:
+        if mask:
+            sol_list.append(mask_to_point(mask, all_points))
+    return sol_list
+
 
 cpdef tuple build_bitmasks(list points):
     """
@@ -42,7 +71,6 @@ cpdef tuple build_bitmasks(list points):
             ay = points[i][1]             
             bx = points[j][0]
             by = points[j][1]
-            
         
             # If points a and b are aligned -> no need to check for the rectangle
             if (ax == bx) or (ay == by):   
@@ -66,8 +94,6 @@ cpdef tuple build_bitmasks(list points):
                     valid_mask[i*N + j] |= (<uint64_t>1 << k)
                     valid_mask[j*N + i] |= (<uint64_t>1 << k)
             
-            
-
     return valid_mask, aligned_mask
 
 
@@ -76,12 +102,9 @@ cpdef bint is_pair_valid(int i, int j, uint64_t subset_mask, int N, uint64_t[:] 
     """
     Complexity: O(1) (Python should have optimized that constant as it's bit operations)
     """
-    # Check whether i and j are aligned
-    if (aligned_mask[i] & (<uint64_t>1 << j)): 
-        return True
+    # Check whether i and j are aligned or whether subset contains a point validating i and j
+    return (aligned_mask[i] & (<uint64_t>1 << j)) or (subset_mask & valid_mask[i*N + j])
 
-    # Check whether subset contains a point validating i and j
-    return bool(subset_mask & valid_mask[i*N + j])
 
 cpdef bint is_valid(uint64_t subset_mask, int N, uint64_t[:] valid_mask, uint64_t[:] aligned_mask):
     """
@@ -90,32 +113,61 @@ cpdef bint is_valid(uint64_t subset_mask, int N, uint64_t[:] valid_mask, uint64_
     Complexity: O(N^2)
     """
     # Iterate over every pair of points in subset == iterate over every 1-bits of subset_mask
-    cdef int i, j
+    # Naïve way: always O(N^2)
     for i in range(N):
         if not (subset_mask & (<uint64_t>1 << i)):
             continue            
         for j in range(i + 1, N):
             if not (subset_mask & (<uint64_t>1 << j)):
                 continue
-        
+            
             if not is_pair_valid(i, j, subset_mask, N, valid_mask, aligned_mask):
-                return False
-
+                return False  
+    
     return True
 
+    # Faster attempt: O(k^2) where k = number of bits in subset_mask DOESN'T WORK
+    # cdef uint64_t i, j
+    # cdef uint64_t i_idx, j_idx
+    # cdef uint64_t ni = subset_mask
+    # cdef uint64_t nj
+
+    # while ni:
+    #     i = __builtin_ctzll(ni)
+
+    #     # i = ni & (~ni + 1)
+    #     # i_idx = <uint64_t>1 >> i
+
+    #     ni >>= (i+1)    
+    #     nj = ni   
+    #     while nj:
+    #         i = __builtin_ctzll(nj)
+    #         # j = (nj & (~nj + 1))
+    #         # j_idx = <uint64_t>1 >> j
+    #         # nj ^= j   
+    #         nj >>= (j+1)
+    #         # print((ni & (~ni + 1)), (nj & (~nj + 1)))
+    #         print(i, j, i_idx, j_idx, ni, nj)
+    #         if not is_pair_valid(i_idx, j_idx, subset_mask, N, valid_mask, aligned_mask):
+    #             return False
+    
+    # return True
+
 # Change in argument: all_points contains all the points and we simply indicate the index n of the first candidate point in the list
-cpdef tuple find_solutions_mask(list all_points, int n, int max_nb_sol=10):
+cpdef tuple find_solutions(list all_points, int n, int max_nb_sol=10, int min_size=0, int max_size=0):
     """
     Finds the minimum size subset of candidates that validates all pairs in (input U subset).
     """
     cdef int N = len(all_points)
     cdef int m = N - n
 
-    if N > 63:
-        raise ValueError("N must be <= 63 for the 64-bit integer bitmask trick.")
+    if N > 64:
+        raise ValueError(f"N must be <= 64 for the 64-bit integer bitmask trick (currently N={N}).")
 
     # PRECOMPUTATION: O(N^3)
     valid_mask, aligned_mask = build_bitmasks(all_points)
+
+    # print(aligned_mask[7])
 
     # First n bits indicate the input points, bits n+1, ..., N are the candidate points
     cdef uint64_t INPUT_MASK = (<uint64_t>1 << n) - 1 
@@ -134,9 +186,13 @@ cpdef tuple find_solutions_mask(list all_points, int n, int max_nb_sol=10):
     cdef uint64_t SUBSET_MASK
     cdef uint64_t POINTS_MASK
     cdef int i
+    cdef int t1
+    cdef int t2
 
     # Enumerate subsets of candidate in increasing size until found connected subset
-    for size in range(m + 1):
+    for size in range(min_size, max_size + 1):
+        print("Testing size", size)
+        t1 = time()
         for subset_indices in combinations(CANDIDATE_INDICES, size):
             # Build the bitmask of the current set of points: O(size)
             SUBSET_MASK = 0
@@ -144,15 +200,116 @@ cpdef tuple find_solutions_mask(list all_points, int n, int max_nb_sol=10):
                 SUBSET_MASK |= (<uint64_t>1 << i)
             POINTS_MASK = INPUT_MASK | SUBSET_MASK
 
+            # Test connectivity
             if is_valid(POINTS_MASK, N, valid_mask, aligned_mask):
                 solutions_mask[count_solutions] = SUBSET_MASK
                 count_solutions += 1
                 found_solution = 1
                 if count_solutions == max_nb_sol:
-                    return True, solutions_mask
+                    t2 = time()
+                    print(f"Found {count_solutions} solutions ({t2-t1} sec)")
+                    return True, masks_to_points(solutions_mask, all_points)
         
         if found_solution:
-            return True, solutions_mask
+            t2 = time()
+            print(f"Found {count_solutions} solutions ({t2-t1} sec)")
+            return True, masks_to_points(solutions_mask, all_points)
+        
+        t2 = time()
+        print(f"Not found ({t2-t1} sec)")
             
     return False, []
+
+
+cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=10, int min_size=0, int max_size=0):
+    """
+    Finds the minimum size subset of candidates that validates all pairs in (input U subset).
+    """
+    cdef int N = len(all_points)
+    cdef int m = N - n
+    min_size = max(0, min_size)
+    max_size = min(m, max_size)
+
+    if N > 64:
+        raise ValueError(f"N must be <= 64 for the 64-bit integer bitmask trick (currently N={N}).")
+
+    # PRECOMPUTATION: O(N^3)
+    valid_mask, aligned_mask = build_bitmasks(all_points)
+
+    # print(aligned_mask[7])
+
+    # First n bits indicate the input points, bits n+1, ..., N are the candidate points
+    cdef uint64_t INPUT_MASK = (<uint64_t>1 << n) - 1 
+    cdef range CANDIDATE_INDICES = range(n, N)
+
+    # Sanity check
+    # if is_valid(INPUT_MASK, N, valid_mask, aligned_mask):
+    #     return True, []
+
+    cdef int size
+    cdef tuple subset_indices
+    cdef bint found_solution
+    # One solution is encoded as a uint64_t integer, we will store at most max_nb_sol solutions
+    cdef uint64_t[:] solutions_mask = np.zeros(max_nb_sol, dtype=np.uint64) 
+    cdef int count_solutions
+    cdef int prev_count_solutions = 0
+    cdef uint64_t SUBSET_MASK
+    cdef uint64_t POINTS_MASK
+    cdef int i
+    cdef int t1
+    cdef int t2
+
+    # Enumerate subsets of candidate in decreasing size until found connected subset
+    for size in range(max_size, min_size-1, -1):
+        
+        # (re)initialize number of solutions found for the current size
+        found_solution = 0
+        count_solutions = 0 
+        # print(f"new values {found_solution}, {count_solutions}, {size}")
+        
+        print("Testing size", size)
+        t1 = time()
+        for subset_indices in combinations(CANDIDATE_INDICES, size):
+            # Build the bitmask of the current set of points: O(size)
+            SUBSET_MASK = 0
+            for i in subset_indices:
+                SUBSET_MASK |= (<uint64_t>1 << i)
+            POINTS_MASK = INPUT_MASK | SUBSET_MASK
+
+            # Test connectivity
+            if is_valid(POINTS_MASK, N, valid_mask, aligned_mask):
+                
+                # If this is the first solution found for current size: reinitialize everything
+                if not found_solution:
+                    found_solution = 1
+                    solutions_mask = np.zeros(max_nb_sol, dtype=np.uint64)
+
+                # Store solution
+                solutions_mask[count_solutions] = SUBSET_MASK
+                count_solutions += 1
+
+                # If found max_nb_solution, move on to the next size 
+                if count_solutions == max_nb_sol:
+                    t2 = time()
+                    print(f"Found {count_solutions} solutions ({t2-t1} sec)")
+                    prev_count_solutions = count_solutions
+                    break
+
+
+        # If didn't find solution in current size but in previous size, 
+        # OR we the total number of solutions is < max_nb_sol
+        # then stop the search and return stored solutions
+        if not found_solution and prev_count_solutions > 0:
+            t2 = time()
+            print(f"Not found in {t2-t1} sec")
+            return True, masks_to_points(solutions_mask, all_points)
+        
+        if found_solution and count_solutions < max_nb_sol:
+            t2 = time()
+            print(f"Found {count_solutions} in {t2-t1} sec")
+            return True, masks_to_points(solutions_mask, all_points)
+
+    t2 = time()
+    print(f"found={found_solution} in {t2-t1} sec")
+    return found_solution, masks_to_points(solutions_mask, all_points)
 
