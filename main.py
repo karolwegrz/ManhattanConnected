@@ -1,18 +1,33 @@
 import streamlit as st
 import time
+import json
+import glob
+import os
+# import logging
+import logging.config
+import sys
 # from setmask import find_solutions
 # from bitmask import find_solutions_mask
 from bitmask_cy import find_solutions, find_solutions_reverse
 
-# Configurable grid size
-GRID_ROWS = 20
-GRID_COLS = 20
-MAX_NB_SOLS = 3
-MIN_SIZE = 16
-MAX_SIZE = 18
+
+# Default values
+GRID_ROWS = 10
+GRID_COLS = 8
 DISPLAY = True
-INCREASING = False
-DECREASING = True
+# For the search:
+MAX_NB_SOLS = 3
+MIN_SIZE = 0
+MAX_SIZE = 15
+DECREASING = True # if False, then in increasing order
+
+# Button appearance mapping using emoji squares
+EMOJI_MAP = {
+    0: "⬜",
+    1: "🟩",
+    2: "🟥",
+    3: "🟦"
+}
 
 # Tighten spacing, style buttons, and remove max-width/padding
 st.markdown(
@@ -33,39 +48,32 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("Is this Mannhattan Connected?")
-
-# Initialize session state for grid and connected flag
+# Initialize session states
+if "grid_rows" not in st.session_state:
+    st.session_state.grid_rows = GRID_ROWS
+if "grid_cols" not in st.session_state:
+    st.session_state.grid_cols = GRID_COLS
 if "grid" not in st.session_state or \
-   len(st.session_state.grid) != GRID_ROWS or \
-   any(len(row) != GRID_COLS for row in st.session_state.grid):
-    st.session_state.grid = [[0 for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
-
+   len(st.session_state.grid) != st.session_state.grid_rows or \
+   any(len(row) != st.session_state.grid_cols for row in st.session_state.grid):
+    st.session_state.grid = [[0 for _ in range(st.session_state.grid_cols)] for _ in range(st.session_state.grid_rows)]
 if "input" not in st.session_state:
-    st.session_state.input = list() 
+    st.session_state.input = []
 if "candidates" not in st.session_state:
-    st.session_state.candidates = list()  
-
-if "connected" not in st.session_state:
-    st.session_state.connected = True  # empty grid is trivially connected
-if "solvable" not in st.session_state:
-    st.session_state.solvable = True
+    st.session_state.candidates = []
 if "solutions" not in st.session_state:
     st.session_state.solutions = set()
+if "connected" not in st.session_state:
+    st.session_state.connected = True  # empty grid is trivially connected
 
-# Button appearance mapping using emoji squares
-EMOJI_MAP = {
-    0: "⬜",
-    1: "🟩",
-    2: "🟥",
-    3: "🟦"
-}
 
-def input_points(grid):
-    return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 1]
+# if "min_size" not in st.session_state:
+#     st.session_state.min_size = MIN_SIZE
+# if "max_size" not in st.session_state:
+#     st.session_state.max_size = MAX_SIZE
 
-def candidate_points(grid):
-    return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 2]
+#######################################
+# Solving functions
 
 # Karol's n^3 solution
 def is_manhattan_connected(points):
@@ -102,89 +110,155 @@ def is_manhattan_connected(points):
                 return False
     return True
 
-def display_solutions(input, candidate, solutions):
-    for x, solution in enumerate(solutions):
+def search(all_points, n, filename, instance, decr=True):
+    t1 = time.time()
+    if decr:
+        print("DECREASING SEARCH")
+        found, solutions = find_solutions_reverse(all_points, n, filename, max_nb_sol=MAX_NB_SOLS, min_size=st.session_state.min_size, max_size=st.session_state.max_size)
+    else:
+        print("INCREASING SEARCH")
+        found, solutions = find_solutions(all_points, n, max_nb_sol=MAX_NB_SOLS, min_size=st.session_state.min_size, max_size=st.session_state.max_size)       
+    t2 = time.time()
+    nb_sol = len(solutions)
+
+    if found and nb_sol > 0:
+        st.session_state.solutions = solutions
+        sol_size = len(solutions[0])
+        st.info(f'Found {nb_sol}/{MAX_NB_SOLS} solutions of size {sol_size} (in {t2-t1} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
+        
+        instance['solutions'] = solutions
+        with open(f'./json/{filename}.json', 'w') as f:    
+            json.dump(instance, f)
+        f.close()  
+
+    else:
+        st.info(f'No solution found of size in [{MIN_SIZE}, {MAX_SIZE}] (in {t2-t1} sec)', icon="👇")
+
+#######################################
+# Interface functions
+
+def input_points(grid):
+    return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 1]
+
+def candidate_points(grid):
+    return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == 2]
+
+def display_solutions():
+    for x, solution in enumerate(st.session_state.solutions):
         st.write(f"Solution {x+1}:")
-        for i in range(GRID_ROWS):
-            cols = st.columns(GRID_COLS)
-            for j in range(GRID_COLS):
-                if (i, j) in input:
+        for i in range(st.session_state.grid_rows):
+            cols = st.columns(st.session_state.grid_cols)
+            for j in range(st.session_state.grid_cols):
+                if (i, j) in st.session_state.input:
                     symbol = EMOJI_MAP[1]
-                elif (i, j) in solution:
+                elif [i, j] in solution or (i, j) in solution:
                     symbol = EMOJI_MAP[3]
-                elif (i, j) in candidate:
+                elif (i, j) in st.session_state.candidates:
                     symbol = EMOJI_MAP[2]
                 else:
                     symbol = EMOJI_MAP[0]
                 cols[j].button(symbol, key=f"{i}-{j}_{x}", args=(i, j, x))
+    if not st.session_state.solutions:
+        st.write("No solution found")
 
 def cycle_cell(i, j):
+    # updates the grid value when clicking
     st.session_state.grid[i][j] = (st.session_state.grid[i][j] + 1) % 3
-    
+    init_grid_pty()
+
+def init_grid_pty():
     st.session_state.input = input_points(st.session_state.grid)
     st.session_state.candidates = candidate_points(st.session_state.grid)
+    st.session_state.solutions = set()
+
+def init_grid():
+    st.session_state.grid_rows = st.session_state.row_slider
+    st.session_state.grid_cols = st.session_state.col_slider
+    st.session_state.grid = [[0 for _ in range(st.session_state.grid_cols)] for _ in range(st.session_state.grid_rows)]
+    init_grid_pty()
+
+def load_instance(instance_name):
+    with open(instance_name, 'r') as f:
+        data_loaded = json.load(f)
+        st.session_state.grid_rows = data_loaded['GRID_ROWS']
+        st.session_state.grid_cols = data_loaded['GRID_COLS']
+
+        st.session_state.grid = [[0 for _ in range(st.session_state.grid_cols)] for _ in range(st.session_state.grid_rows)]
+        st.session_state.grid = data_loaded['grid']
+        
+        init_grid_pty()
+        if 'solutions' in data_loaded:
+            st.session_state.solutions = data_loaded['solutions']
+    f.close()
+    print(f"Loaded instance {instance_name}")
+
+def load_latest():
+    list_of_files = glob.glob('./json/*.json') 
+    if len(list_of_files):
+        # Load latest instance
+        latest_file = max(list_of_files, key=os.path.getctime)
+        load_instance(latest_file)
+    else:
+        st.write("No latest instance")
+
+def load_file():
+    load_instance(f'./json/{st.session_state.loaded_filename}.json')
+
+def solver():
+    filename = time.strftime("%Y%m%d-%H%M%S")
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(filename=f'./log/{filename}.log', encoding='utf-8', level=logging.DEBUG)
     
-#######################################
-
-# Layout grid with minimal gaps
-for i in range(GRID_ROWS):
-    cols = st.columns(GRID_COLS)
-    for j in range(GRID_COLS):
-        symbol = EMOJI_MAP[st.session_state.grid[i][j]]
-        cols[j].button(symbol, key=f"{i}-{j}", on_click=cycle_cell, args=(i, j))
-
-# Status message at the bottom of the grid
-if st.button("Submit", type="primary"):
-    print(f"\nInput size: {len(st.session_state.input)}, \nTotal size: {len(st.session_state.input) + len(st.session_state.candidates)}")
-    print(st.session_state.input)
-    print(st.session_state.candidates)
-
+    print(f"\nInput size: {len(st.session_state.input)} + {len(st.session_state.candidates)} = {len(st.session_state.input) + len(st.session_state.candidates)}")
+    
     t1 =  time.time()
     st.session_state.connected = is_manhattan_connected(st.session_state.input)
     t2 = time.time()
 
+    # display_input(grid_rows, grid_cols, grid)
     if st.session_state.connected:
-        st.success(f"Connected (in {t2-t1} sec)")
+        st.success(f"Is already connected (in {t2-t1} sec)")
     else:
-        st.error(f"Not Connected (in {t2-t1} sec)")
-
         all_points = st.session_state.input + st.session_state.candidates
-        N = len(all_points)
         n = len(st.session_state.input)
 
+        instance = {
+            'GRID_ROWS': st.session_state.grid_rows,
+            'GRID_COLS': st.session_state.grid_cols,
+            'grid': st.session_state.grid
+        }
+        with open(f'./json/{filename}.json', 'w') as f:
+            json.dump(instance, f)
+        f.close()
+        logger.info(f'./json/{filename}.json')
 
-        if INCREASING:
-            t3 = time.time()
-            print("INCREASING SEARCH")
-            found, solutions = find_solutions(all_points, n, max_nb_sol=MAX_NB_SOLS, min_size=MIN_SIZE, max_size=MAX_SIZE)        
-            t4 = time.time()
-            nb_sol = len(solutions)
-
-            if found and nb_sol > 0:
-                sol_size = len(solutions[0])
-                st.info(f'Found {nb_sol}/{MAX_NB_SOLS} solutions of size {sol_size} (in {t4-t3} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👆")
-                
-                if DISPLAY:
-                    display_solutions(st.session_state.input, st.session_state.candidates, solutions)
-            else:
-                st.info(f'No solution found (in {t4-t3} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👆")
-    
-
-        if DECREASING:
-            t4b = time.time()
-            print("DECREASING SEARCH")
-            found_rev, solutions_rev = find_solutions_reverse(all_points, n, max_nb_sol=MAX_NB_SOLS, min_size=MIN_SIZE, max_size=MAX_SIZE)        
-            t5 = time.time()
-            nb_sol_rev = len(solutions_rev)
+        search(all_points, n, filename, instance, DECREASING)
+        logger.info("-\n")
 
 
-            if found_rev and nb_sol_rev > 0:
-                sol_size_rev = len(solutions_rev[0])
-                st.info(f'Found {nb_sol_rev}/{MAX_NB_SOLS} solutions of size {sol_size_rev} (in {t5-t4b} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
-                
-                if DISPLAY:
-                    display_solutions(st.session_state.input, st.session_state.candidates, solutions)
-            else:
-                st.info(f'No solution found (in {t4-t3} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
-                
-        print("DONE")
+#### PAGE LAYOUT
+
+st.title("Is this Mannhattan Connected?")
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    row_size = st.slider("Number of rows", 1, 20, GRID_ROWS, key="row_slider", on_change=init_grid)
+    col_size = st.slider("Number of columns", 1, 20, GRID_COLS, key="col_slider", on_change=init_grid)
+    st.button("Clear", type="primary", on_click=init_grid)
+with col2:
+    st.text_input("Instance to load:", "Enter json filename", key="loaded_filename", on_change=load_file)
+    st.button("Load latest instance", type="primary", on_click=load_latest)
+with col3:
+    st.number_input("Min solution size", value=MIN_SIZE, key="min_size")
+    st.number_input("Max solution size", value=MAX_SIZE, key="max_size")
+    submit = st.button("Solve", type="primary", on_click=solver, width='stretch')
+
+for i in range(st.session_state.grid_rows):
+    cols = st.columns(st.session_state.grid_cols)
+    for j in range(st.session_state.grid_cols):
+        symbol = EMOJI_MAP[st.session_state.grid[i][j]]
+        cols[j].button(symbol, key=f"{i}-{j}", on_click=cycle_cell, args=(i, j))
+if DISPLAY:
+    display_solutions()
+
+

@@ -3,6 +3,8 @@ from itertools import combinations
 import numpy as np
 from libc.stdio cimport printf
 from time import time
+import logging
+import sys
 
 # Number of trailing zeroes
 cdef extern from "builtins.h":
@@ -126,35 +128,9 @@ cpdef bint is_valid(uint64_t subset_mask, int N, uint64_t[:] valid_mask, uint64_
     
     return True
 
-    # Faster attempt: O(k^2) where k = number of bits in subset_mask DOESN'T WORK
-    # cdef uint64_t i, j
-    # cdef uint64_t i_idx, j_idx
-    # cdef uint64_t ni = subset_mask
-    # cdef uint64_t nj
-
-    # while ni:
-    #     i = __builtin_ctzll(ni)
-
-    #     # i = ni & (~ni + 1)
-    #     # i_idx = <uint64_t>1 >> i
-
-    #     ni >>= (i+1)    
-    #     nj = ni   
-    #     while nj:
-    #         i = __builtin_ctzll(nj)
-    #         # j = (nj & (~nj + 1))
-    #         # j_idx = <uint64_t>1 >> j
-    #         # nj ^= j   
-    #         nj >>= (j+1)
-    #         # print((ni & (~ni + 1)), (nj & (~nj + 1)))
-    #         print(i, j, i_idx, j_idx, ni, nj)
-    #         if not is_pair_valid(i_idx, j_idx, subset_mask, N, valid_mask, aligned_mask):
-    #             return False
-    
-    # return True
 
 # Change in argument: all_points contains all the points and we simply indicate the index n of the first candidate point in the list
-cpdef tuple find_solutions(list all_points, int n, int max_nb_sol=10, int min_size=0, int max_size=0):
+cpdef tuple find_solutions(list all_points, int n, int max_nb_sol=3, int min_size=0, int max_size=0):
     """
     Finds the minimum size subset of candidates that validates all pairs in (input U subset).
     """
@@ -221,7 +197,7 @@ cpdef tuple find_solutions(list all_points, int n, int max_nb_sol=10, int min_si
     return False, []
 
 
-cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=10, int min_size=0, int max_size=0):
+cpdef tuple find_solutions_reverse(list all_points, int n, str filename, int max_nb_sol=3, int min_size=0, int max_size=0):
     """
     Finds the minimum size subset of candidates that validates all pairs in (input U subset).
     """
@@ -232,19 +208,15 @@ cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=10, in
 
     if N > 64:
         raise ValueError(f"N must be <= 64 for the 64-bit integer bitmask trick (currently N={N}).")
+    if min_size > max_size :
+        raise ValueError(f"min_size={min_size} should be <= max_size={max_size}.")
 
     # PRECOMPUTATION: O(N^3)
     valid_mask, aligned_mask = build_bitmasks(all_points)
 
-    # print(aligned_mask[7])
-
     # First n bits indicate the input points, bits n+1, ..., N are the candidate points
     cdef uint64_t INPUT_MASK = (<uint64_t>1 << n) - 1 
     cdef range CANDIDATE_INDICES = range(n, N)
-
-    # Sanity check
-    # if is_valid(INPUT_MASK, N, valid_mask, aligned_mask):
-    #     return True, []
 
     cdef int size
     cdef tuple subset_indices
@@ -259,14 +231,19 @@ cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=10, in
     cdef int t1
     cdef int t2
 
+
+    # targets = logging.StreamHandler(sys.stdout), logging.FileHandler(f'./log/{filename}.log')
+    # logging.basicConfig(format='%(message)s', level=logging.INFO, handlers=targets)
+
+
     # Enumerate subsets of candidate in decreasing size until found connected subset
     for size in range(max_size, min_size-1, -1):
         
         # (re)initialize number of solutions found for the current size
         found_solution = 0
         count_solutions = 0 
-        # print(f"new values {found_solution}, {count_solutions}, {size}")
         
+        # logging.info("Testing size", size)
         print("Testing size", size)
         t1 = time()
         for subset_indices in combinations(CANDIDATE_INDICES, size):
@@ -291,6 +268,7 @@ cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=10, in
                 # If found max_nb_solution, move on to the next size 
                 if count_solutions == max_nb_sol:
                     t2 = time()
+                    # logging.info(f"Found {count_solutions} solutions ({t2-t1} sec)")
                     print(f"Found {count_solutions} solutions ({t2-t1} sec)")
                     prev_count_solutions = count_solutions
                     break
@@ -301,15 +279,18 @@ cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=10, in
         # then stop the search and return stored solutions
         if not found_solution and prev_count_solutions > 0:
             t2 = time()
+            # logging.info(f"Not found in {t2-t1} sec")
             print(f"Not found in {t2-t1} sec")
             return True, masks_to_points(solutions_mask, all_points)
         
         if found_solution and count_solutions < max_nb_sol:
             t2 = time()
+            # logging.info(f"Found {count_solutions} in {t2-t1} sec")
             print(f"Found {count_solutions} in {t2-t1} sec")
             return True, masks_to_points(solutions_mask, all_points)
 
     t2 = time()
+    # logging.info(f"found={found_solution} in {t2-t1} sec")
     print(f"found={found_solution} in {t2-t1} sec")
     return found_solution, masks_to_points(solutions_mask, all_points)
 
