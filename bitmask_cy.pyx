@@ -197,7 +197,7 @@ cpdef tuple find_solutions(list all_points, int n, int max_nb_sol=3, int min_siz
     return False, []
 
 
-cpdef tuple find_solutions_reverse(list all_points, int n, str filename, int max_nb_sol=3, int min_size=0, int max_size=0):
+cpdef tuple find_solutions_reverse(list all_points, int n, int max_nb_sol=3, int min_size=0, int max_size=0):
     """
     Finds the minimum size subset of candidates that validates all pairs in (input U subset).
     """
@@ -286,7 +286,7 @@ cpdef tuple find_solutions_reverse(list all_points, int n, str filename, int max
         if found_solution and count_solutions < max_nb_sol:
             t2 = time()
             # logging.info(f"Found {count_solutions} in {t2-t1} sec")
-            print(f"Found {count_solutions} in {t2-t1} sec")
+            print(f"Found {count_solutions}/{max_nb_sol} in {t2-t1} sec")
             return True, masks_to_points(solutions_mask, all_points)
 
     t2 = time()

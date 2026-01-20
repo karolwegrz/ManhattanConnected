@@ -17,7 +17,7 @@ GRID_COLS = 8
 DISPLAY = True
 # For the search:
 MAX_NB_SOLS = 3
-MIN_SIZE = 0
+MIN_SIZE = 8
 MAX_SIZE = 15
 DECREASING = True # if False, then in increasing order
 
@@ -62,7 +62,7 @@ if "input" not in st.session_state:
 if "candidates" not in st.session_state:
     st.session_state.candidates = []
 if "solutions" not in st.session_state:
-    st.session_state.solutions = set()
+    st.session_state.solutions = []
 if "connected" not in st.session_state:
     st.session_state.connected = True  # empty grid is trivially connected
 
@@ -110,29 +110,25 @@ def is_manhattan_connected(points):
                 return False
     return True
 
-def search(all_points, n, filename, instance, decr=True):
+def search(all_points, n, decr=True):
     t1 = time.time()
     if decr:
         print("DECREASING SEARCH")
-        found, solutions = find_solutions_reverse(all_points, n, filename, max_nb_sol=MAX_NB_SOLS, min_size=st.session_state.min_size, max_size=st.session_state.max_size)
+        found, solutions = find_solutions_reverse(all_points, n, max_nb_sol=st.session_state.max_nb_sol, min_size=st.session_state.min_size, max_size=st.session_state.max_size)
     else:
         print("INCREASING SEARCH")
-        found, solutions = find_solutions(all_points, n, max_nb_sol=MAX_NB_SOLS, min_size=st.session_state.min_size, max_size=st.session_state.max_size)       
+        found, solutions = find_solutions(all_points, n, max_nb_sol=st.session_state.max_nb_sol, min_size=st.session_state.min_size, max_size=st.session_state.max_size)       
     t2 = time.time()
     nb_sol = len(solutions)
 
     if found and nb_sol > 0:
         st.session_state.solutions = solutions
         sol_size = len(solutions[0])
-        st.info(f'Found {nb_sol}/{MAX_NB_SOLS} solutions of size {sol_size} (in {t2-t1} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
-        
-        instance['solutions'] = solutions
-        with open(f'./json/{filename}.json', 'w') as f:    
-            json.dump(instance, f)
-        f.close()  
+        st.info(f'Found {nb_sol}/{st.session_state.max_nb_sol} solutions of size {sol_size} (in {t2-t1} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
+
 
     else:
-        st.info(f'No solution found of size in [{MIN_SIZE}, {MAX_SIZE}] (in {t2-t1} sec)', icon="👇")
+        st.info(f'No solution found of size in [{st.session_state.min_size}, {st.session_state.max_size}] (in {t2-t1} sec)', icon="👇")
 
 #######################################
 # Interface functions
@@ -169,7 +165,7 @@ def cycle_cell(i, j):
 def init_grid_pty():
     st.session_state.input = input_points(st.session_state.grid)
     st.session_state.candidates = candidate_points(st.session_state.grid)
-    st.session_state.solutions = set()
+    st.session_state.solutions = []
 
 def init_grid():
     st.session_state.grid_rows = st.session_state.row_slider
@@ -205,10 +201,7 @@ def load_file():
     load_instance(f'./json/{st.session_state.loaded_filename}.json')
 
 def solver():
-    filename = time.strftime("%Y%m%d-%H%M%S")
-    logger = logging.getLogger(__name__)
-    logging.basicConfig(filename=f'./log/{filename}.log', encoding='utf-8', level=logging.DEBUG)
-    
+
     print(f"\nInput size: {len(st.session_state.input)} + {len(st.session_state.candidates)} = {len(st.session_state.input) + len(st.session_state.candidates)}")
     
     t1 =  time.time()
@@ -222,18 +215,24 @@ def solver():
         all_points = st.session_state.input + st.session_state.candidates
         n = len(st.session_state.input)
 
-        instance = {
-            'GRID_ROWS': st.session_state.grid_rows,
-            'GRID_COLS': st.session_state.grid_cols,
-            'grid': st.session_state.grid
-        }
-        with open(f'./json/{filename}.json', 'w') as f:
-            json.dump(instance, f)
-        f.close()
-        logger.info(f'./json/{filename}.json')
+        filename = time.strftime("%Y%m%d-%H%M%S")
+        save(filename)
+        search(all_points, n, DECREASING)
+        save(filename)
 
-        search(all_points, n, filename, instance, DECREASING)
-        logger.info("-\n")
+
+def save(filename):
+    instance = {
+        'GRID_ROWS': st.session_state.grid_rows,
+        'GRID_COLS': st.session_state.grid_cols,
+        'grid': st.session_state.grid,
+        'solutions': st.session_state.solutions
+    }
+    with open(f'./json/{filename}.json', 'w') as f:    
+        json.dump(instance, f)
+    f.close()  
+    print(f"Saved in {filename}")
+
 
 
 #### PAGE LAYOUT
@@ -251,6 +250,7 @@ with col2:
 with col3:
     st.number_input("Min solution size", value=MIN_SIZE, key="min_size")
     st.number_input("Max solution size", value=MAX_SIZE, key="max_size")
+    st.number_input("Max number solutions", value=MAX_NB_SOLS, key="max_nb_sol")
     submit = st.button("Solve", type="primary", on_click=solver, width='stretch')
 
 for i in range(st.session_state.grid_rows):
