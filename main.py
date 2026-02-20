@@ -16,10 +16,10 @@ GRID_ROWS = 10
 GRID_COLS = 8
 DISPLAY = True
 # For the search:
-MAX_NB_SOLS = 3
-MIN_SIZE = 8
+MAX_NB_SOLS = 2
+MIN_SIZE = 0
 MAX_SIZE = 15
-DECREASING = True # if False, then in increasing order
+HEURISTIC = True # if False, then in increasing order
 
 # Button appearance mapping using emoji squares
 EMOJI_MAP = {
@@ -217,7 +217,7 @@ def solver():
 
         filename = time.strftime("%Y%m%d-%H%M%S")
         save(filename)
-        search(all_points, n, DECREASING)
+        search(all_points, n, HEURISTIC)
         save(filename)
 
 
@@ -238,6 +238,8 @@ def save(filename):
 #### PAGE LAYOUT
 
 st.title("Is this Mannhattan Connected?")
+if HEURISTIC:
+    st.info("The 'Solve' button doesn\'t find the min for sure. It starts by taking subsets of red points of max size, and decreases the size with the rule that if it finds more than max number of solutions, then it decreases the size, otherwise if it finds exactly the number of solutions entered (exhaustive search), then it stops and displays the found solutions.")
 
 col1, col2, col3 = st.columns(3)
 with col1:
