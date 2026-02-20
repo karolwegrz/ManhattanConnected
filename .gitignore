@@ -211,6 +211,7 @@ TSWLatexianTemp*
 ./log/*
 ./json/*
 ./venv/*
+venv/* 
 
 *.pyc
 *.cpython*.so
