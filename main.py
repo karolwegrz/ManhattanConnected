@@ -124,7 +124,7 @@ def search(all_points, n, decr=True):
     if found and nb_sol > 0:
         st.session_state.solutions = solutions
         sol_size = len(solutions[0])
-        st.info(f'Found {nb_sol}/{st.session_state.max_nb_sol} solutions of size {sol_size} (in {t2-t1} sec) (min size={MIN_SIZE}, max_size={MAX_SIZE})', icon="👇")
+        st.info(f'Found {nb_sol}/{st.session_state.max_nb_sol} solutions of size {sol_size} (in {t2-t1} sec) (min size={st.session_state.min_size}, max_size={st.session_state.max_size})', icon="👇")
 
 
     else:
